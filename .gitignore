@@ -1,0 +1,6 @@
+*.pyc
+__pycache__/
+\.vscode/
+.env
+.DS_Store
+workspace.code-workspace

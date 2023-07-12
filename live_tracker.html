@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <title>Binance Forced Liquidation Tracker</title>
+
+    <link rel="icon" href="data:,">
+
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        thead {
+            background-color: #f2f2f2;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            width: 15%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        th {
+            font-weight: bold;
+        }
+
+        td {
+            font-size: 14px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        p {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        #filterForm {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        #filterForm > div {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 10px;
+        }
+
+        #filterButton {
+            margin-top: 10px;
+        }
+
+        #message {
+            text-align: center;
+            margin-bottom: 10px;
+            color: red;
+        }
+
+        #currentFilter {
+            text-align: center;
+            margin-bottom: 20px;
+            white-space: pre-line;
+        }
+
+        @media screen and (min-width: 600px) {
+            #filterForm {
+                flex-direction: row;
+                justify-content: center;
+            }
+
+            #filterForm > div {
+                flex-direction: row;
+                align-items: center;
+            }
+
+            #filterButton {
+                margin-top: 0;
+                margin-left: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Binance Forced Liquidation Tracker</h1>
+    <p>Data is automatically loaded in real-time.<br><a href="https://github.com/hgnx" target="_blank">https://github.com/hgnx</a></p>
+
+    <div id="filterForm">
+        <div>
+            <label for="totalThreshold">Minimum Total($):</label>
+            <input type="number" id="totalThreshold" min="0" placeholder="0">
+        </div>
+        <div>
+            <label for="setTicker">Set Ticker:</label>
+            <input type="text" id="setTicker" placeholder="BTCUSDT, ETHUSDT">
+        </div>
+        <div>
+            <button id="filterButton">Filter</button>
+        </div>
+    </div>
+
+    <div id="message"></div>
+
+    <div id="currentFilter"></div>
+
+    <table id="liquidations-table">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Price</th>
+                <th>Quantity</th>
+                <th>Total($)</th>
+                <th>Side</th>
+                <th>Timestamp</th>
+            </tr>
+        </thead>
+        <tbody id="liquidations"></tbody>
+    </table>
+
+    <script>
+        const socket = new WebSocket(
+            "wss://fstream.binance.com/ws/!forceOrder@arr"
+        );
+        let forceLiquidations = [];
+        let totalThreshold, setTicker;
+        const liquidationsTable = document.getElementById("liquidations");
+        const totalThresholdInput = document.getElementById("totalThreshold");
+        const setTickerInput = document.getElementById("setTicker");
+        const filterButton = document.getElementById("filterButton");
+        const messageDiv = document.getElementById("message");
+        const currentFilterDiv = document.getElementById("currentFilter");
+        let filterApplied = false;
+
+        function initializeFilterStatus() {
+            const thresholdValue = totalThreshold ? totalThreshold : "Not Set";
+            const tickerValue = setTicker ? setTicker.join(", ") : "Not Set";
+            currentFilterDiv.textContent = `Minimum Total($): ${thresholdValue}\nTicker: ${tickerValue}`;
+        }
+
+        initializeFilterStatus();
+
+        socket.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+            const liquidation = data.o;
+            forceLiquidations.unshift(liquidation);
+            if (forceLiquidations.length > 30) {
+                forceLiquidations.pop();
+            }
+            filterApplied ? filterData() : renderData(forceLiquidations);
+        };
+
+        filterButton.onclick = function() {
+            filterApplied = true;
+            totalThreshold = totalThresholdInput.value !== "" ? parseFloat(totalThresholdInput.value) : undefined;
+            setTicker = setTickerInput.value !== "" ? setTickerInput.value.split(",").map(ticker => ticker.trim()) : undefined;
+            filterData();
+            initializeFilterStatus();
+            messageDiv.textContent = "Filtering is working";
+            messageDiv.style.color = "red";
+        }
+
+        function renderData(liquidations) {
+            const liquidationsHtml = liquidations
+                .map(liquidation => {
+                    const timestamp = new Date(liquidation.T);
+                    const total = Math.floor(liquidation.p * liquidation.q);
+                    return `<tr>
+                        <td>
+                            <a href="https://www.binance.com/en/futures/${liquidation.s}" target="_blank">${liquidation.s}</a>
+                        </td>
+                        <td>${liquidation.p}</td>
+                        <td>${liquidation.q}</td>
+                        <td>${total}</td>
+                        <td>${liquidation.S}</td>
+                        <td>${timestamp.toLocaleString()}</td>
+                    </tr>`;
+                })
+                .join("");
+            liquidationsTable.innerHTML = liquidationsHtml;
+        }
+
+        function filterData() {
+            const filteredLiquidations = forceLiquidations.filter(liquidation =>
+                (totalThreshold === undefined || Math.floor(liquidation.p * liquidation.q) >= totalThreshold) &&
+                (setTicker === undefined || setTicker.includes(liquidation.s))
+            );
+
+            renderData(filteredLiquidations);
+        }
+    </script>
+</body>
+
+</html>

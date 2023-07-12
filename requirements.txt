@@ -1,0 +1,3 @@
+pandas==2.0.3
+pytz==2023.3
+websocket-client==1.5.2
